@@ -1,0 +1,591 @@
+ss<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TaskMaster Pro</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3.3.0/build/global/luxon.min.js"></script>
+  <style id="app-style">
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f8fafc;
+      color: #334155;
+    }
+
+    .header {
+      background: linear-gradient(to right, #3b82f6, #2563eb);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .task-item {
+      transition: all 0.2s ease;
+    }
+    
+    .task-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+    
+    .modal-overlay {
+      backdrop-filter: blur(5px);
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    .notification-banner {
+      animation: slideDown 0.3s ease-in-out;
+      transform-origin: top;
+    }
+
+    @keyframes slideDown {
+      from {
+        transform: translateY(-100%);
+      }
+      to {
+        transform: translateY(0);
+      }
+    }
+    
+    .bounce {
+      animation: bounce 0.5s;
+    }
+    
+    @keyframes bounce {
+      0%, 100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-10px);
+      }
+    }
+
+    .status-badge {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+    }
+
+    .empty-state {
+      min-height: 300px;
+    }
+  </style>
+</head>
+<body class="min-h-screen">
+  <!-- Header -->
+  <header class="header px-4 py-4 text-white">
+    <div class="container mx-auto flex justify-between items-center">
+      <div class="flex items-center">
+        <i class="fas fa-check-circle text-2xl mr-2"></i>
+        <h1 class="text-xl font-bold">TaskMaster Pro</h1>
+      </div>
+      <button id="add-task-btn" class="bg-white text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-blue-50 transition-colors flex items-center">
+        <i class="fas fa-plus mr-2"></i>
+        Add Task
+      </button>
+    </div>
+  </header>
+
+  <!-- Notification Banner (hidden by default) -->
+  <div id="notification-banner" class="notification-banner hidden w-full bg-yellow-100 border-b border-yellow-200 p-4 fixed top-0 left-0 z-50">
+    <div class="container mx-auto flex items-center justify-between">
+      <div class="flex items-center">
+        <i class="fas fa-bell text-yellow-500 mr-3"></i>
+        <div>
+          <p class="font-medium text-yellow-800" id="notification-title">Task reminder</p>
+          <p class="text-sm text-yellow-700" id="notification-due-date">Due soon</p>
+        </div>
+      </div>
+      <button id="dismiss-notification" class="text-yellow-500 hover:text-yellow-700">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <main class="container mx-auto px-4 py-8">
+    <!-- Tasks Header -->
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-2xl font-bold text-gray-800">My Tasks</h2>
+      <div class="flex gap-2">
+        <select id="filter-status" class="bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          <option value="all">All Tasks</option>
+          <option value="pending">Pending</option>
+          <option value="completed">Completed</option>
+          <option value="overdue">Overdue</option>
+        </select>
+        <select id="sort-by" class="bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          <option value="date-asc">Date (Ascending)</option>
+          <option value="date-desc">Date (Descending)</option>
+          <option value="name-asc">Name (A-Z)</option>
+          <option value="name-desc">Name (Z-A)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Task List -->
+    <div id="task-list" class="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+      <!-- Task items will be inserted here via JavaScript -->
+    </div>
+
+    <!-- Empty State (shown when no tasks) -->
+    <div id="empty-state" class="flex flex-col items-center justify-center empty-state">
+      <img src="https://cdn.pixabay.com/photo/2017/03/29/04/47/checklist-2184812_1280.png" alt="Empty task list" class="w-48 h-auto mb-6 opacity-50">
+      <h3 class="text-xl font-medium text-gray-500 mb-2">No tasks yet</h3>
+      <p class="text-gray-400 text-center max-w-md mb-4">Your task list is empty. Add your first task to get started.</p>
+      <button id="empty-state-add-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+        <i class="fas fa-plus mr-2"></i>
+        Add Your First Task
+      </button>
+    </div>
+  </main>
+
+  <!-- Task Form Modal -->
+  <div id="task-modal" class="modal-overlay fixed inset-0 z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 relative">
+      <button id="close-modal" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+        <i class="fas fa-times text-lg"></i>
+      </button>
+      
+      <h3 id="modal-title" class="text-xl font-bold mb-6 text-gray-800">Add New Task</h3>
+      
+      <form id="task-form">
+        <div class="mb-4">
+          <label for="task-title" class="block text-sm font-medium text-gray-700 mb-1">Task Title *</label>
+          <input type="text" id="task-title" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+        
+        <div class="mb-4">
+          <label for="task-description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+          <textarea id="task-description" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"></textarea>
+        </div>
+        
+        <div class="mb-4">
+          <label for="task-due-date" class="block text-sm font-medium text-gray-700 mb-1">Due Date *</label>
+          <input type="datetime-local" id="task-due-date" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+        
+        <div class="mb-6">
+          <label for="task-reminder" class="block text-sm font-medium text-gray-700 mb-1">Reminder (Optional)</label>
+          <input type="datetime-local" id="task-reminder" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+        
+        <div class="flex justify-end space-x-3">
+          <button type="button" id="cancel-task" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+          <button type="submit" id="save-task" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Save Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="delete-modal" class="modal-overlay fixed inset-0 z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+      <h3 class="text-xl font-bold mb-3 text-gray-800">Delete Task</h3>
+      <p class="text-gray-600 mb-6">Are you sure you want to delete this task? This action cannot be undone.</p>
+      
+      <div class="flex justify-end space-x-3">
+        <button id="cancel-delete" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+        <button id="confirm-delete" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script id="app-script">
+    // TypeScript Interface Definitions (as comments for reference)
+    /**
+     * Task Status Type
+     * @type {"pending" | "completed" | "overdue"}
+     */
+
+    /**
+     * Task Interface
+     * @interface
+     * @property {string} id - Unique identifier
+     * @property {string} title - Task title
+     * @property {string} description - Task description
+     * @property {Date} dueDate - When the task is due
+     * @property {Date | null} reminderTime - Optional reminder time
+     * @property {"pending" | "completed" | "overdue"} status - Current status
+     * @property {Date} createdAt - When the task was created
+     */
+
+    // DOM Elements
+    const taskList = document.getElementById('task-list');
+    const emptyState = document.getElementById('empty-state');
+    const addTaskBtn = document.getElementById('add-task-btn');
+    const emptyStateAddBtn = document.getElementById('empty-state-add-btn');
+    const taskModal = document.getElementById('task-modal');
+    const closeModal = document.getElementById('close-modal');
+    const taskForm = document.getElementById('task-form');
+    const modalTitle = document.getElementById('modal-title');
+    const cancelTaskBtn = document.getElementById('cancel-task');
+    const deleteModal = document.getElementById('delete-modal');
+    const cancelDeleteBtn = document.getElementById('cancel-delete');
+    const confirmDeleteBtn = document.getElementById('confirm-delete');
+    const notificationBanner = document.getElementById('notification-banner');
+    const dismissNotification = document.getElementById('dismiss-notification');
+    const filterStatus = document.getElementById('filter-status');
+    const sortBy = document.getElementById('sort-by');
+
+    // Task collection
+    let tasks = [];
+    let currentTaskId = null;
+
+    // Initialize the app
+    function initialize() {
+      loadTasks();
+      setupEventListeners();
+      renderTasks();
+      setupReminderChecks();
+    }
+
+    // Load tasks from localStorage
+    function loadTasks() {
+      const storedTasks = localStorage.getItem('tasks');
+      if (storedTasks) {
+        tasks = JSON.parse(storedTasks);
+        // Convert string dates back to Date objects
+        tasks.forEach(task => {
+          task.dueDate = new Date(task.dueDate);
+          task.createdAt = new Date(task.createdAt);
+          task.reminderTime = task.reminderTime ? new Date(task.reminderTime) : null;
+        });
+      }
+      updateTaskStatuses();
+    }
+
+    // Save tasks to localStorage
+    function saveTasks() {
+      localStorage.setItem('tasks', JSON.stringify(tasks));
+    }
+
+    // Setup event listeners
+    function setupEventListeners() {
+      addTaskBtn.addEventListener('click', openAddTaskModal);
+      emptyStateAddBtn.addEventListener('click', openAddTaskModal);
+      closeModal.addEventListener('click', closeTaskModal);
+      cancelTaskBtn.addEventListener('click', closeTaskModal);
+      taskForm.addEventListener('submit', handleTaskFormSubmit);
+      cancelDeleteBtn.addEventListener('click', closeDeleteModal);
+      confirmDeleteBtn.addEventListener('click', deleteCurrentTask);
+      dismissNotification.addEventListener('click', dismissNotificationBanner);
+      filterStatus.addEventListener('change', renderTasks);
+      sortBy.addEventListener('change', renderTasks);
+    }
+
+    // Modal handlers
+    function openAddTaskModal() {
+      modalTitle.textContent = 'Add New Task';
+      taskForm.reset();
+      
+      // Set minimum date for due date and reminder to today
+      const now = new Date();
+      const localDatetime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16);
+      
+      document.getElementById('task-due-date').min = localDatetime;
+      document.getElementById('task-reminder').min = localDatetime;
+      
+      currentTaskId = null;
+      taskModal.classList.remove('hidden');
+    }
+
+    function openEditTaskModal(taskId) {
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      
+      modalTitle.textContent = 'Edit Task';
+      
+      // Format dates for datetime-local input
+      const formatDateForInput = (date) => {
+        return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+          .toISOString()
+          .slice(0, 16);
+      };
+      
+      document.getElementById('task-title').value = task.title;
+      document.getElementById('task-description').value = task.description || '';
+      document.getElementById('task-due-date').value = formatDateForInput(new Date(task.dueDate));
+      
+      if (task.reminderTime) {
+        document.getElementById('task-reminder').value = formatDateForInput(new Date(task.reminderTime));
+      } else {
+        document.getElementById('task-reminder').value = '';
+      }
+      
+      currentTaskId = taskId;
+      taskModal.classList.remove('hidden');
+    }
+
+    function closeTaskModal() {
+      taskModal.classList.add('hidden');
+      taskForm.reset();
+    }
+
+    function openDeleteModal(taskId) {
+      currentTaskId = taskId;
+      deleteModal.classList.remove('hidden');
+    }
+
+    function closeDeleteModal() {
+      deleteModal.classList.add('hidden');
+    }
+
+    // Form submission
+    function handleTaskFormSubmit(e) {
+      e.preventDefault();
+      
+      const titleInput = document.getElementById('task-title');
+      const descriptionInput = document.getElementById('task-description');
+      const dueDateInput = document.getElementById('task-due-date');
+      const reminderInput = document.getElementById('task-reminder');
+      
+      if (!titleInput.value.trim() || !dueDateInput.value) {
+        // Simple form validation
+        return;
+      }
+      
+      const dueDate = new Date(dueDateInput.value);
+      const reminderTime = reminderInput.value ? new Date(reminderInput.value) : null;
+      
+      if (currentTaskId) {
+        // Update existing task
+        const taskIndex = tasks.findIndex(t => t.id === currentTaskId);
+        if (taskIndex !== -1) {
+          tasks[taskIndex] = {
+            ...tasks[taskIndex],
+            title: titleInput.value.trim(),
+            description: descriptionInput.value.trim(),
+            dueDate,
+            reminderTime
+          };
+        }
+      } else {
+        // Create new task
+        const newTask = {
+          id: generateId(),
+          title: titleInput.value.trim(),
+          description: descriptionInput.value.trim(),
+          dueDate,
+          reminderTime,
+          status: 'pending',
+          createdAt: new Date()
+        };
+        tasks.push(newTask);
+      }
+      
+      updateTaskStatuses();
+      saveTasks();
+      renderTasks();
+      closeTaskModal();
+    }
+
+    // Task operations
+    function deleteCurrentTask() {
+      if (!currentTaskId) return;
+      
+      tasks = tasks.filter(task => task.id !== currentTaskId);
+      saveTasks();
+      renderTasks();
+      closeDeleteModal();
+    }
+
+    function toggleTaskStatus(taskId) {
+      const taskIndex = tasks.findIndex(t => t.id === taskId);
+      if (taskIndex === -1) return;
+      
+      const task = tasks[taskIndex];
+      task.status = task.status === 'completed' ? 'pending' : 'completed';
+      
+      updateTaskStatuses();
+      saveTasks();
+      renderTasks();
+    }
+
+    // Update all task statuses based on due dates
+    function updateTaskStatuses() {
+      const now = new Date();
+      tasks.forEach(task => {
+        if (task.status === 'completed') return;
+        
+        if (task.dueDate < now) {
+          task.status = 'overdue';
+        } else {
+          task.status = 'pending';
+        }
+      });
+    }
+
+    // Render tasks to the DOM
+    function renderTasks() {
+      // Apply filters
+      let filteredTasks = [...tasks];
+      
+      const statusFilter = filterStatus.value;
+      if (statusFilter !== 'all') {
+        filteredTasks = filteredTasks.filter(task => task.status === statusFilter);
+      }
+      
+      // Apply sorting
+      const sortOption = sortBy.value;
+      switch (sortOption) {
+        case 'date-asc':
+          filteredTasks.sort((a, b) => a.dueDate - b.dueDate);
+          break;
+        case 'date-desc':
+          filteredTasks.sort((a, b) => b.dueDate - a.dueDate);
+          break;
+        case 'name-asc':
+          filteredTasks.sort((a, b) => a.title.localeCompare(b.title));
+          break;
+        case 'name-desc':
+          filteredTasks.sort((a, b) => b.title.localeCompare(a.title));
+          break;
+      }
+      
+      // Show/hide empty state
+      if (tasks.length === 0) {
+        taskList.innerHTML = '';
+        emptyState.classList.remove('hidden');
+      } else {
+        emptyState.classList.add('hidden');
+        
+        // Render task list
+        taskList.innerHTML = filteredTasks.map(task => {
+          const dueDate = luxon.DateTime.fromJSDate(new Date(task.dueDate)).toLocaleString({
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+          });
+          
+          let statusClass = '';
+          let statusText = '';
+          
+          switch (task.status) {
+            case 'pending':
+              statusClass = 'bg-blue-100 text-blue-800';
+              statusText = 'Pending';
+              break;
+            case 'completed':
+              statusClass = 'bg-green-100 text-green-800';
+              statusText = 'Completed';
+              break;
+            case 'overdue':
+              statusClass = 'bg-red-100 text-red-800';
+              statusText = 'Overdue';
+              break;
+          }
+          
+          return `
+            <div class="task-item bg-white p-4 rounded-lg shadow-sm border border-gray-100" data-task-id="${task.id}">
+              <div class="flex justify-between items-start mb-2">
+                <h3 class="font-medium text-gray-900 ${task.status === 'completed' ? 'line-through text-gray-500' : ''}">
+                  ${task.title}
+                </h3>
+                <span class="status-badge ${statusClass}">${statusText}</span>
+              </div>
+              
+              <p class="text-gray-500 text-sm mb-3 truncate">${task.description || 'No description'}</p>
+              
+              <div class="flex justify-between items-center">
+                <div class="flex items-center text-gray-400 text-sm">
+                  <i class="far fa-calendar-alt mr-1"></i>
+                  <span>${dueDate}</span>
+                </div>
+                
+                <div class="flex space-x-2">
+                  <button class="text-gray-400 hover:text-gray-600 toggle-status-btn" onclick="toggleTaskStatus('${task.id}')">
+                    <i class="fas ${task.status === 'completed' ? 'fa-times-circle' : 'fa-check-circle'}"></i>
+                  </button>
+                  <button class="text-gray-400 hover:text-blue-600 edit-task-btn" onclick="openEditTaskModal('${task.id}')">
+                    <i class="fas fa-pencil-alt"></i>
+                  </button>
+                  <button class="text-gray-400 hover:text-red-600 delete-task-btn" onclick="openDeleteModal('${task.id}')">
+                    <i class="fas fa-trash-alt"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    // Set up reminder checks
+    function setupReminderChecks() {
+      // Check for reminders every minute
+      setInterval(checkReminders, 60000);
+      checkReminders(); // Initial check
+    }
+
+    // Check for tasks that need reminders
+    function checkReminders() {
+      const now = new Date();
+      updateTaskStatuses();
+      
+      // Find tasks with reminders that should trigger now
+      tasks.forEach(task => {
+        if (task.reminderTime && !task.reminderShown) {
+          const reminderTime = new Date(task.reminderTime);
+          const timeDiff = Math.abs(now - reminderTime);
+          
+          // If the reminder time is within the last minute, show notification
+          if (timeDiff < 60000) {
+            showNotification(task);
+            // Mark as shown to prevent multiple notifications
+            task.reminderShown = true;
+            saveTasks();
+          }
+        }
+      });
+    }
+
+    // Show notification for a task
+    function showNotification(task) {
+      const notificationTitle = document.getElementById('notification-title');
+      const notificationDueDate = document.getElementById('notification-due-date');
+      
+      notificationTitle.textContent = task.title;
+      
+      const dueDate = luxon.DateTime.fromJSDate(new Date(task.dueDate)).toLocaleString({
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+      
+      notificationDueDate.textContent = `Due: ${dueDate}`;
+      notificationBanner.classList.remove('hidden');
+      notificationBanner.classList.add('bounce');
+      
+      // Auto dismiss after 10 seconds
+      setTimeout(() => {
+        dismissNotificationBanner();
+      }, 10000);
+    }
+
+    // Dismiss notification banner
+    function dismissNotificationBanner() {
+      notificationBanner.classList.add('hidden');
+      notificationBanner.classList.remove('bounce');
+    }
+
+    // Utility function to generate a unique ID
+    function generateId() {
+      return Math.random().toString(36).substr(2, 9);
+    }
+
+    // Make functions globally accessible for onclick handlers
+    window.toggleTaskStatus = toggleTaskStatus;
+    window.openEditTaskModal = openEditTaskModal;
+    window.openDeleteModal = openDeleteModal;
+
+    // Initialize the application
+    initialize();
+  </script>
+</body>
+</html>
